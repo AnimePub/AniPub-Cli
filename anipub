@@ -1,0 +1,186 @@
+#!/usr/bin/env node
+// █████╗ ███╗   ██╗██╗██████╗ ██╗   ██╗██████╗ 
+// ██╔══██╗████╗  ██║██║██╔══██╗██║   ██║██╔══██╗
+// ███████║██╔██╗ ██║██║██████╔╝██║   ██║██████╔╝
+// ██╔══██║██║╚██╗██║██║██╔═══╝ ██║   ██║██╔══██╗
+// ██║  ██║██║ ╚████║██║██║     ╚██████╔╝██║  ██║
+// ╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝╚═╝      ╚═════╝ ╚═╝  ╚═╝
+//           Terminal Edition v1.0 • github/AnimePub
+
+const https = require('https');
+const { exec } = require('child_process');
+const readline = require('readline');
+
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+let TOTAL = '?';
+let mode = 'main'; // main | watch
+
+const c = {
+  r: '\x1b[0m',    b: '\x1b[1m',    dim: '\x1b[2m',
+  red: '\x1b[91m', green: '\x1b[92m', yellow: '\x1b[93m',
+  blue: '\x1b[94m', magenta: '\x1b[95m', cyan: '\x1b[96m', white: '\x1b[97m'
+};
+
+const logo = `
+${c.magenta}╔══════════════════════════════════════════════════╗
+   █████╗ ███╗   ██╗██╗██████╗ ██╗   ██╗██████╗  
+   ██╔══██╗████╗  ██║██║██╔══██╗██║   ██║██╔══██╗ 
+   ███████║██╔██╗ ██║██║██████╔╝██║   ██║██████╔╝ 
+   ██╔══██║██║╚██╗██║██║██╔═══╝ ██║   ██║██╔══██╗ 
+   ██║  ██║██║ ╚████║██║██║     ╚██████╔╝██║  ██║ 
+   ╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝╚═╝      ╚═════╝ ╚═╝  ╚═╝${c.cyan}
+                Terminal Edition v1.0${c.r}
+${c.magenta}╚══════════════════════════════════════════════════╝${c.r}`;
+
+function box(t, color = c.cyan) {
+  const line = '═'.repeat(t.length + 4);
+  return `${color}╔${line}╗\n║  ${c.b}${t}${c.r}${color}  ║\n╚${line}╝${c.r}`;
+}
+
+function fetchTotal() {
+  return new Promise(res => {
+    https.get('https://www.anipub.xyz/api/getAll', r => {
+      let d = ''; r.on('data', c => d += c);
+      r.on('end', () => {
+        try { TOTAL = JSON.parse(d).total || parseInt(d.trim(), 10); }
+        catch { TOTAL = '?'; }
+        res();
+      });
+    }).on('error', () => { TOTAL = '?'; res(); });
+  });
+}
+
+function fetchAnime(id) {
+  return new Promise((resolve, reject) => {
+    https.get(`https://www.anipub.xyz/api/info/${id}`, res => {
+      let data = ''; res.on('data', c => data += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch { reject(); }
+      });
+    }).on('error', reject);
+  });
+}
+
+function openWatch(id) {
+  const url = `https://anipub.xyz/aniplayer/${id}/0`;
+  const cmd = process.platform === 'win32' ? `start "" "${url}"` :
+              process.platform === 'darwin' ? `open "${url}"` : `xdg-open "${url}"`;
+  exec(cmd, () => {});
+}
+
+function displayAnime(anime) {
+  console.clear();
+  console.log(logo);
+  console.log(`\n${c.cyan}✨ ${c.b}${anime.Name || 'Unknown Title'}${c.r}\n`);
+
+  const ep = (anime.epCount || 0) + 1;
+  const info = [
+    ['Aired', anime.Aired],
+    ['Premiered', anime.Premiered],
+    ['Status', anime.Status],
+    ['Episodes', `${c.green}${ep}${c.r}`],
+    ['Duration', anime.Duration],
+    ['Studio', anime.Studios],
+    ['Producers', anime.Producers],
+    ['Genres', Array.isArray(anime.Genres) ? anime.Genres.join(', ') : anime.Genres || '-'],
+    ['MAL Score', anime.MALScore ? `${c.yellow}${anime.MALScore}${c.r} (${anime.RatingsNum || 0} votes)` : '-']
+  ];
+
+  info.forEach(([label, value]) => {
+    if (value && value !== 'N/A') console.log(`${c.blue}│ ${c.cyan}${label.padEnd(10)}${c.r}: ${value}`);
+  });
+
+  if (anime.Synonyms && anime.Synonyms !== 'N/A')
+    console.log(`${c.blue}│ ${c.cyan}Synonyms${c.r}   : ${anime.Synonyms}`);
+
+  console.log(`\n${c.dim}${anime.DescripTion || 'No description available.'}${c.r}\n`);
+
+  if (anime.ImagePath)
+    console.log(`${c.magenta}🖼  Cover → https://www.anipub.xyz/images/${anime.ImagePath}${c.r}`);
+
+  console.log(`${c.green}\n▶  Watch Now → https://anipub.xyz/aniplayer/${anime._id}/0${c.r}`);
+  console.log(box(' Type "help" for commands ', c.yellow));
+}
+
+function showHelp() {
+  console.clear();
+  console.log(logo);
+  console.log(`\n${c.b}${c.cyan}Available Commands:${c.r}\n`);
+  const cmds = [
+    ['id / number', 'Get anime info by ID (e.g. 1, 25, 80)'],
+    ['w', 'Enter Watch Mode (quick open player)'],
+    ['back', 'Return to main info mode'],
+    ['help', 'Show this help screen'],
+    ['clear', 'Clear the screen'],
+    ['q', 'Quit the tool']
+  ];
+  cmds.forEach(([cmd, desc]) => console.log(`   ${c.yellow}${cmd.padEnd(12)}${c.r} → ${desc}`));
+  console.log(`\n${c.dim}Total Anime in Database: ${c.b}${TOTAL === '?' ? '??' : TOTAL}${c.r}`);
+  console.log(`\n${c.green}Developed with ❤ by the AniPub community${c.r}`);
+  console.log(box(' Press Enter to continue ', c.magenta));
+  rl.question('', () => mainPrompt());
+}
+
+function mainPrompt() {
+  const range = TOTAL !== '?' ? `1–${TOTAL}` : 'any';
+  rl.question(`\n${c.yellow}❯${c.r} Enter Anime ID (${c.cyan}${range}${c.r}), ${c.green}w${c.r}atch, ${c.magenta}help${c.r}, ${c.red}q${c.r}uit → ${c.b}`, async input => {
+    input = input.trim().toLowerCase();
+
+    if (input === 'q' || input === 'quit') {
+      console.clear();
+      console.log(box(' Thanks for using AniPub Terminal! See you! ', c.green));
+      return rl.close();
+    }
+
+    if (input === 'help') return showHelp();
+    if (input === 'clear') { console.clear(); console.log(logo); return mainPrompt(); }
+
+    if (input === 'w') {
+      mode = 'watch';
+      console.log(`\n${c.green}Watch Mode Activated!${c.r} Enter Anime ID to open player (or "back" to return)`);
+      return watchPrompt();
+    }
+
+    if (/^\d+$/.test(input)) {
+      const id = parseInt(input);
+      if (TOTAL !== '?' && id > TOTAL) {
+        console.log(`${c.red}ID too high! Max is ${TOTAL}${c.r}`);
+        return mainPrompt();
+      }
+      try {
+        const anime = await fetchAnime(id);
+        if (anime.Name) displayAnime(anime);
+        else console.log(`${c.red}Anime not found!${c.r}`);
+      } catch { console.log(`${c.red}Network error or invalid ID${c.r}`); }
+      return mainPrompt();
+    }
+
+    console.log(`${c.red}Unknown command. Type "help" for options.${c.r}`);
+    mainPrompt();
+  });
+}
+
+function watchPrompt() {
+  rl.question(`\n${c.green}Watch ❯${c.r} Anime ID (or ${c.yellow}back${c.r}): ${c.b}`, input => {
+    input = input.trim().toLowerCase();
+    if (input === 'back') { mode = 'main'; return mainPrompt(); }
+    if (input === 'q') { console.clear(); console.log(box(' Goodbye! ', c.cyan)); rl.close(); return; }
+    if (/^\d+$/.test(input)) {
+      openWatch(input);
+      console.log(`${c.green}Opening AniPub player for ID ${input}... Enjoy!${c.r}`);
+    } else {
+      console.log(`${c.red}Invalid ID!${c.r}`);
+    }
+    watchPrompt();
+  });
+}
+
+(async () => {
+  console.clear();
+  await fetchTotal();
+  console.log(logo);
+  console.log(`\n${c.cyan}Total Anime Available: ${c.b}${c.yellow}${TOTAL === '?' ? 'Loading...' : TOTAL}${c.r}`);
+  console.log(`${c.dim}Direct from https://www.anipub.xyz •Easy_User-Friendly_Awesome • Instant watch${c.r}\n`);
+  mainPrompt();
+})();
